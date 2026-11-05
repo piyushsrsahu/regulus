@@ -29,3 +29,35 @@ def test_extract_features_finds_known_transit():
     assert features["period"] == pytest.approx(4.0, abs=0.1)
     assert features["depth"] == pytest.approx(0.02, abs=0.005)
     assert features["bls_power"] > 0.0
+
+
+def test_extract_features_recovers_period_on_long_baseline():
+    """A 5-day transit in a 200-day series must not be reported as a harmonic (e.g. 25 days)."""
+    rng = np.random.default_rng(7)
+    t = np.arange(0, 200, 0.02)
+    flux = 1.0 + rng.normal(0, 1e-3, len(t))
+    phase = ((t - 1.0 + 2.5) % 5.0) - 2.5
+    flux[np.abs(phase) < 0.1] -= 0.01
+
+    features = extract_features(load_light_curve(t, flux))
+
+    assert features["period"] == pytest.approx(5.0, abs=0.02)
+    assert features["depth"] == pytest.approx(0.01, abs=0.003)
+
+
+def test_extract_features_zero_variance_flux():
+    """A perfectly flat light curve yields zero depth/power instead of crashing."""
+    t = np.arange(0, 30, 0.02)
+    features = extract_features(load_light_curve(t, np.ones_like(t)))
+
+    assert features["depth"] == pytest.approx(0.0, abs=1e-9)
+    assert features["bls_power"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_extract_features_short_series():
+    """A 12-point light curve (the minimum regime) still produces a feature dict."""
+    rng = np.random.default_rng(3)
+    t = np.arange(12, dtype=float)
+    features = extract_features(load_light_curve(t, 1.0 + rng.normal(0, 1e-3, 12)))
+
+    assert set(features) >= {"period", "depth", "duration", "bls_power", "transit_time"}
