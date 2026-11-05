@@ -14,7 +14,7 @@ def _result(prediction="exoplanet", confidence=0.9, depth=0.01, period=3.5, powe
 def test_tests_use_isolated_database():
     """Guard: the autouse fixture must have redirected writes away from the real regulus.db."""
     assert src.db.DB_PATH != REAL_DB_PATH
-    assert REAL_DB_PATH == str(PROJECT_ROOT / "regulus.db")
+    assert src.db.DB_PATH != str(PROJECT_ROOT / "regulus.db")
 
 
 def test_save_and_load_round_trip():

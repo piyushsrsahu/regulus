@@ -32,3 +32,27 @@ def test_app_analyzes_each_sample_without_errors(sample, expected):
     latest = load_history()[0]
     assert latest["filename"] == sample
     assert latest["prediction"] == expected
+
+
+def test_sidebar_exposes_analysis_parameters():
+    at = AppTest.from_file(APP, default_timeout=120).run()
+    labels = [w.label for w in at.sidebar.slider] + [w.label for w in at.sidebar.number_input]
+    assert labels == ["Detrending Window Length", "Min Search Period (days)", "Max Search Period (days)"]
+
+
+def test_rerun_does_not_duplicate_history():
+    """Streamlit reruns the script on every interaction; the same analysis must be logged once."""
+    at = _app_on_samples()
+    at.selectbox[0].set_value("sample_quiet_star.csv").run()
+    n_after_first = len(load_history())
+    at.run()
+    at.run()
+    assert len(load_history()) == n_after_first
+
+
+def test_changing_parameters_logs_a_new_run():
+    at = _app_on_samples()
+    n_before = len(load_history())
+    at.sidebar.slider[0].set_value(151).run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert len(load_history()) == n_before + 1

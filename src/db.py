@@ -1,12 +1,14 @@
 """
 Database persistence layer for storing and querying light curve analysis records.
 """
+import os
 import sqlite3
 from datetime import datetime, timezone
 
 from src import PROJECT_ROOT
 
-DB_PATH = str(PROJECT_ROOT / "regulus.db")
+# REGULUS_DB lets demos or CI use a separate database file.
+DB_PATH = os.environ.get("REGULUS_DB", str(PROJECT_ROOT / "regulus.db"))
 
 
 def init_db() -> None:

@@ -17,6 +17,35 @@ MAX_GRID_POINTS = 50_000  # keeps a single analysis well under the 5 s NFR
 _LK_MIN_DURATION = 0.05
 
 
+SUN_RADIUS_IN_EARTH = 109.0     # R_sun / R_earth
+JUPITER_RADIUS_IN_EARTH = 11.21  # R_jup / R_earth
+
+# Upper radius bound (Earth radii) for each size class.
+PLANET_CLASSES = [
+    (2.0, "Terrestrial / Super-Earth"),
+    (4.0, "Sub-Neptune / Mini-Neptune"),
+    (8.0, "Neptune-like"),
+    (float("inf"), "Gas Giant / Jovian"),
+]
+
+
+def estimate_planet_size(depth: float, stellar_radius_suns: float = 1.0) -> dict:
+    """
+    Convert fractional transit depth to planet radius via depth = (Rp / R*)**2.
+
+    Assumes a solar-type host unless stellar_radius_suns is given.
+    Returns radius in Earth and Jupiter radii plus a coarse size class.
+    """
+    depth = max(0.0, float(depth))
+    r_earth = SUN_RADIUS_IN_EARTH * stellar_radius_suns * np.sqrt(depth)
+    planet_class = next(name for limit, name in PLANET_CLASSES if r_earth < limit)
+    return {
+        "radius_earth": float(r_earth),
+        "radius_jupiter": float(r_earth / JUPITER_RADIUS_IN_EARTH),
+        "planet_class": planet_class,
+    }
+
+
 def build_period_grid(t_span: float, min_period: float, max_period: float, n_min: int = 1000) -> np.ndarray:
     """Return trial periods (days), evenly spaced in frequency between min_period and max_period."""
     f_lo, f_hi = 1.0 / max_period, 1.0 / min_period
@@ -27,7 +56,7 @@ def build_period_grid(t_span: float, min_period: float, max_period: float, n_min
 
 
 def extract_features(lc: lk.LightCurve, min_period: float = 0.5, max_period: float = None,
-                     n_periods: int = 1000) -> dict:
+                     n_periods: int = 1000, return_periodogram: bool = False):
     """
     Compute Box Least Squares (BLS) periodogram features from a cleaned light curve.
 
@@ -36,9 +65,12 @@ def extract_features(lc: lk.LightCurve, min_period: float = 0.5, max_period: flo
         min_period: Minimum orbital period to test in days (default: 0.5 days).
         max_period: Maximum orbital period to test in days. If None, uses half baseline.
         n_periods: Minimum number of trial periods; the grid grows with the baseline.
+        return_periodogram: If True, also return (periods, power) arrays so callers
+            can plot the exact spectrum the features came from.
 
     Returns:
         dict: Extracted transit properties including period, depth, duration, bls_power, and transit_time.
+        If return_periodogram is True: (dict, (periods, power)).
     """
     if len(lc.time) < 10:
         raise ValueError("Light curve must contain at least 10 points for periodogram analysis.")
@@ -71,10 +103,13 @@ def extract_features(lc: lk.LightCurve, min_period: float = 0.5, max_period: flo
     bls_power = float(periodogram.max_power.value)
     transit_time = float(periodogram.transit_time_at_max_power.value)
 
-    return {
+    features = {
         "period": period,
         "depth": max(0.0, depth),
         "duration": max(0.0, duration),
         "bls_power": max(0.0, bls_power),
         "transit_time": transit_time,
     }
+    if return_periodogram:
+        return features, (np.asarray(periodogram.period.value), np.asarray(periodogram.power.value))
+    return features

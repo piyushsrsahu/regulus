@@ -61,3 +61,29 @@ def test_extract_features_short_series():
     features = extract_features(load_light_curve(t, 1.0 + rng.normal(0, 1e-3, 12)))
 
     assert set(features) >= {"period", "depth", "duration", "bls_power", "transit_time"}
+
+
+def test_extract_features_can_return_periodogram():
+    """The app plots the exact spectrum the features came from."""
+    t = np.arange(0, 20, 0.02)
+    flux = np.ones_like(t)
+    flux[np.abs(((t - 1.0 + 2.0) % 4.0) - 2.0) < 0.1] -= 0.02
+    features, (periods, power) = extract_features(load_light_curve(t, flux), return_periodogram=True)
+
+    assert len(periods) == len(power) >= 1000
+    assert periods[np.argmax(power)] == pytest.approx(features["period"])
+    assert power.max() == pytest.approx(features["bls_power"])
+
+
+@pytest.mark.parametrize("depth, r_earth, planet_class", [
+    (0.01345, 12.64, "Gas Giant / Jovian"),        # matches the bundled transit sample
+    (0.0001, 1.09, "Terrestrial / Super-Earth"),   # ~Earth-sized
+    (0.001, 3.45, "Sub-Neptune / Mini-Neptune"),
+    (0.0025, 5.45, "Neptune-like"),
+])
+def test_estimate_planet_size(depth, r_earth, planet_class):
+    from src.features import estimate_planet_size
+    size = estimate_planet_size(depth)
+    assert size["radius_earth"] == pytest.approx(r_earth, abs=0.01)
+    assert size["radius_jupiter"] == pytest.approx(r_earth / 11.21, abs=0.01)
+    assert size["planet_class"] == planet_class
