@@ -1,0 +1,8 @@
+streamlit
+lightkurve
+scikit-learn
+pandas
+numpy
+joblib
+plotly
+pytest
