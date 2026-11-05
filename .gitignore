@@ -7,3 +7,4 @@ data/raw/*
 regulus.db
 .streamlit/secrets.toml
 .DS_Store
+data/processed/

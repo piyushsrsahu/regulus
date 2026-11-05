@@ -46,6 +46,15 @@ def estimate_planet_size(depth: float, stellar_radius_suns: float = 1.0) -> dict
     }
 
 
+def robust_std(x: np.ndarray) -> float:
+    """1.4826 x median absolute deviation: a standard deviation estimate that ignores outliers."""
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size == 0:
+        return 0.0
+    return float(1.4826 * np.median(np.abs(x - np.median(x))))
+
+
 def build_period_grid(t_span: float, min_period: float, max_period: float, n_min: int = 1000) -> np.ndarray:
     """Return trial periods (days), evenly spaced in frequency between min_period and max_period."""
     f_lo, f_hi = 1.0 / max_period, 1.0 / min_period
@@ -103,12 +112,31 @@ def extract_features(lc: lk.LightCurve, min_period: float = 0.5, max_period: flo
     bls_power = float(periodogram.max_power.value)
     transit_time = float(periodogram.transit_time_at_max_power.value)
 
+    power = np.asarray(periodogram.power.value, dtype=float)
+    flux = np.asarray(lc.flux.value, dtype=float)
+    time = np.asarray(lc.time.value, dtype=float)
+
+    # Scale-free statistics (unchanged by any affine rescaling of the flux), so
+    # curves with a lost baseline (e.g. the de-meaned Kaggle set) and ordinary
+    # baseline-1 CSVs land in the same feature space.
+    phase = ((time - transit_time + 0.5 * period) % period) - 0.5 * period
+    in_transit = np.abs(phase) < 0.5 * duration
+    n_in = int(in_transit.sum())
+    noise = robust_std(flux[~in_transit]) if np.any(~in_transit) else robust_std(flux)
+    depth_snr = max(0.0, depth) / noise * np.sqrt(max(n_in, 1)) if noise > 0 else 0.0
+    power_scatter = robust_std(power)
+    bls_sde = (power.max() - np.median(power)) / power_scatter if power_scatter > 0 else 0.0
+
     features = {
         "period": period,
         "depth": max(0.0, depth),
         "duration": max(0.0, duration),
         "bls_power": max(0.0, bls_power),
         "transit_time": transit_time,
+        "noise": float(noise),
+        "n_in_transit": n_in,
+        "depth_snr": float(depth_snr),
+        "bls_sde": float(bls_sde),
     }
     if return_periodogram:
         return features, (np.asarray(periodogram.period.value), np.asarray(periodogram.power.value))

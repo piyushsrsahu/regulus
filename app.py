@@ -14,7 +14,7 @@ from plotly.subplots import make_subplots
 from src import PROJECT_ROOT
 from src.preprocessing import load_light_curve, parse_light_curve_frame
 from src.features import extract_features, estimate_planet_size
-from src.model import predict
+from src.model import predict, model_info
 from src.db import init_db, save_analysis, load_history, clear_history
 
 # Unicode character codes for interface symbols
@@ -137,6 +137,18 @@ with st.sidebar:
         "changing them shifts the extracted features and can change the verdict."
     )
     st.divider()
+    try:
+        info = model_info()
+        m = info["metrics"]
+        if m:
+            st.caption(
+                f"**Model:** trained on {info['dataset']}. "
+                f"Test set ({m['n_test']} curves, {m['n_test_positive']} planets): "
+                f"precision {m['exoplanet_precision']:.2f}, recall {m['exoplanet_recall']:.2f}, "
+                f"F1 {m['exoplanet_f1']:.2f}."
+            )
+    except FileNotFoundError:
+        st.warning("No trained model found. Run `python train_model.py`.")
     st.markdown("Developed with Python, Streamlit, Astropy, Lightkurve, and Scikit-Learn.")
 
 tab_analyze, tab_history = st.tabs([f"{ICON_ANALYZE} Analyze", f"{ICON_HISTORY} History"])

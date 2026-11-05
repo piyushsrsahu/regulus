@@ -28,6 +28,17 @@ def _get_model_bundle():
     return _model_bundle
 
 
+def model_info() -> dict:
+    """Training provenance stored in the model bundle (dataset name, test metrics)."""
+    bundle = _get_model_bundle()
+    return {
+        "dataset": bundle.get("dataset", "unknown"),
+        "metrics": bundle.get("metrics", {}),
+        "feature_names": list(bundle.get("feature_names", DEFAULT_FEATURES)),
+        "trained_at": bundle.get("trained_at"),
+    }
+
+
 def predict(features: dict) -> dict:
     """
     Generate an exoplanet transit prediction for a set of extracted features.
@@ -42,8 +53,12 @@ def predict(features: dict) -> dict:
     model = bundle["model"]
     feature_names = bundle.get("feature_names", DEFAULT_FEATURES)
 
+    missing = [name for name in feature_names if name not in features]
+    if missing:
+        raise ValueError(f"Features missing for this model: {missing}. Re-run extract_features().")
+
     # Construct DataFrame with matching feature names to avoid sklearn feature name warnings
-    row_df = pd.DataFrame([{name: float(features.get(name, 0.0)) for name in feature_names}])
+    row_df = pd.DataFrame([{name: float(features[name]) for name in feature_names}])
 
     # Predict probabilities and class label
     probs = model.predict_proba(row_df)[0]
@@ -60,4 +75,6 @@ def predict(features: dict) -> dict:
         "duration": float(features.get("duration", 0.0)),
         "bls_power": float(features.get("bls_power", 0.0)),
         "transit_time": float(features.get("transit_time", 0.0)),
+        "depth_snr": float(features.get("depth_snr", 0.0)),
+        "bls_sde": float(features.get("bls_sde", 0.0)),
     }

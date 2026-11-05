@@ -1,0 +1,29 @@
+{
+  "dataset": "Synthetic light curves (300 generated)",
+  "split": "stratified 75/25 split",
+  "n_train": 225,
+  "n_train_positive": 69,
+  "n_test": 75,
+  "n_test_positive": 23,
+  "exoplanet_precision": 1.0,
+  "exoplanet_recall": 1.0,
+  "exoplanet_f1": 1.0,
+  "accuracy": 1.0,
+  "confusion_matrix": [
+    [
+      52,
+      0
+    ],
+    [
+      0,
+      23
+    ]
+  ],
+  "feature_importances": {
+    "period": 0.274,
+    "duration": 0.0267,
+    "depth_snr": 0.4647,
+    "bls_sde": 0.2345
+  },
+  "trained_at": "2026-11-05T17:16:34+00:00"
+}
