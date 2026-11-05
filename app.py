@@ -8,7 +8,8 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.preprocessing import load_light_curve
+from src import PROJECT_ROOT
+from src.preprocessing import load_light_curve, parse_light_curve_frame
 from src.features import extract_features
 from src.model import predict
 from src.db import init_db, save_analysis, load_history, clear_history
@@ -80,7 +81,7 @@ with tab_analyze:
             except Exception as e:
                 st.error(f"Error reading CSV file: {e}")
     else:
-        sample_files = glob.glob("data/sample_light_curves/*.csv")
+        sample_files = sorted(glob.glob(str(PROJECT_ROOT / "data" / "sample_light_curves" / "*.csv")))
         sample_options = {os.path.basename(f): f for f in sample_files}
         
         if sample_options:
@@ -101,18 +102,15 @@ with tab_analyze:
             st.warning("No sample files found in data/sample_light_curves/.")
 
     if df_data is not None:
-        # Standardize column headers
-        col_map = {c.lower().strip(): c for c in df_data.columns}
-        time_col = col_map.get("time")
-        flux_col = col_map.get("flux")
+        try:
+            raw_time, raw_flux = parse_light_curve_frame(df_data)
+        except ValueError as e:
+            st.error(str(e))
+            raw_time = None
 
-        if not time_col or not flux_col:
-            st.error("Uploaded CSV must contain columns labeled 'time' and 'flux'. Found: " + ", ".join(df_data.columns))
-        else:
-            raw_time = df_data[time_col].values
-            raw_flux = df_data[flux_col].values
-
-            st.success(f"Loaded **{source_name}** ({len(df_data):,} observations, {raw_time.max() - raw_time.min():.2f} days time-span).")
+        if raw_time is not None:
+            t_span = np.nanmax(raw_time) - np.nanmin(raw_time)
+            st.success(f"Loaded **{source_name}** ({len(df_data):,} observations, {t_span:.2f} days time-span).")
 
             with st.spinner("Executing detrending, Box Least Squares periodogram, and ML inference..."):
                 try:

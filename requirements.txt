@@ -1,8 +1,9 @@
-streamlit
-lightkurve
-scikit-learn
-pandas
-numpy
-joblib
-plotly
-pytest
+streamlit==1.62.0
+lightkurve==2.6.0
+astropy==8.0.1
+scikit-learn==1.9.1
+pandas==2.3.3
+numpy==2.3.4
+joblib==1.5.3
+plotly==7.0.0
+pytest==9.1.1

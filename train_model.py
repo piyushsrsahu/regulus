@@ -16,9 +16,11 @@ from sklearn.metrics import classification_report, confusion_matrix
 
 from src.preprocessing import load_light_curve
 from src.features import extract_features
+from src import PROJECT_ROOT
 
 FEATURE_COLUMNS = ["period", "depth", "duration", "bls_power"]
-MODEL_DIR = "models"
+MODEL_DIR = str(PROJECT_ROOT / "models")
+RAW_DIR = PROJECT_ROOT / "data" / "raw"
 MODEL_PATH = os.path.join(MODEL_DIR, "random_forest.joblib")
 
 
@@ -63,7 +65,7 @@ def generate_synthetic_training_dataset(n_samples: int = 120) -> pd.DataFrame:
         # Extract features through standard pipeline
         try:
             lc = load_light_curve(t, flux)
-            feats = extract_features(lc, min_period=0.5, max_period=10.0)
+            feats = extract_features(lc)  # same search range as the app uses at inference
             feats["label"] = label
             rows.append(feats)
         except Exception:
@@ -77,7 +79,7 @@ def load_dataset() -> pd.DataFrame:
     Attempt to load real Kepler dataset from data/raw/ if available,
     otherwise fallback to synthetic dataset generation.
     """
-    raw_csvs = glob.glob("data/raw/*.csv")
+    raw_csvs = sorted(glob.glob(str(RAW_DIR / "*.csv")))
     if raw_csvs:
         print(f"Found raw dataset in data/raw/: {raw_csvs[0]}. Processing...")
         # If Kaggle exoTrain format (FLUX.1...FLUX.N, LABEL)

@@ -4,7 +4,9 @@ Database persistence layer for storing and querying light curve analysis records
 import sqlite3
 from datetime import datetime, timezone
 
-DB_PATH = "regulus.db"
+from src import PROJECT_ROOT
+
+DB_PATH = str(PROJECT_ROOT / "regulus.db")
 
 
 def init_db() -> None:

@@ -2,7 +2,38 @@
 Preprocessing routines for raw photometric time-series data.
 """
 import numpy as np
+import pandas as pd
 import lightkurve as lk
+
+
+def parse_light_curve_frame(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Pull numeric time and flux arrays out of an uploaded CSV table.
+
+    Column names are matched case-insensitively ("Time", " FLUX " etc.).
+    Non-numeric cells become NaN and are later dropped by load_light_curve.
+
+    Raises:
+        ValueError: if the columns are missing, the table is empty, or no
+            row has both a numeric time and a numeric flux value.
+    """
+    col_map = {str(c).lower().strip(): c for c in df.columns}
+    time_col = col_map.get("time")
+    flux_col = col_map.get("flux")
+    if time_col is None or flux_col is None:
+        found = ", ".join(map(str, df.columns)) or "(none)"
+        raise ValueError(f"CSV must contain columns labeled 'time' and 'flux'. Found: {found}")
+
+    if len(df) == 0:
+        raise ValueError("CSV has a header row but no data rows.")
+
+    time = pd.to_numeric(df[time_col], errors="coerce").to_numpy(dtype=float)
+    flux = pd.to_numeric(df[flux_col], errors="coerce").to_numpy(dtype=float)
+
+    if not np.any(np.isfinite(time) & np.isfinite(flux)):
+        raise ValueError("No rows contain numeric values in both the 'time' and 'flux' columns.")
+
+    return time, flux
 
 
 def load_light_curve(time: np.ndarray, flux: np.ndarray, window_length: int = 101) -> lk.LightCurve:

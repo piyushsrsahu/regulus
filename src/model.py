@@ -5,7 +5,9 @@ import os
 import joblib
 import pandas as pd
 
-MODEL_PATH = "models/random_forest.joblib"
+from src import PROJECT_ROOT
+
+MODEL_PATH = str(PROJECT_ROOT / "models" / "random_forest.joblib")
 DEFAULT_FEATURES = ["period", "depth", "duration", "bls_power"]
 
 _model_bundle = None
