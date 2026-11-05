@@ -24,16 +24,17 @@ import pandas as pd
 import sklearn
 from joblib import Parallel, delayed
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, precision_recall_fscore_support
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import (average_precision_score, classification_report, confusion_matrix,
+                             precision_recall_fscore_support)
+from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from src import PROJECT_ROOT
 from src.features import extract_features, robust_std
 from src.preprocessing import load_light_curve
 
 # Scale-free features: comparable between de-meaned Kaggle flux and baseline-1 CSVs.
-FEATURE_COLUMNS = ["period", "duration", "depth_snr", "bls_sde"]
-FEATURE_VERSION = 2          # bump whenever extract_features changes (invalidates the cache)
+FEATURE_COLUMNS = ["period", "duration", "depth_snr", "bls_sde", "box_vs_sine"]
+FEATURE_VERSION = 3          # bump whenever extract_features changes (invalidates the cache)
 
 MODEL_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODEL_DIR / "random_forest.joblib"
@@ -155,9 +156,8 @@ def build_kaggle_dataset(augment: int, n_jobs: int):
         train, test = train_test_split(train, test_size=0.25, random_state=SEED, stratify=train["label"])
         split = "stratified 75/25 split of exoTrain (exoTest.csv not found)"
     aug = augmentation_features(KAGGLE_TRAIN, train.loc[train["label"] == 0, "row_id"].to_numpy(), augment, n_jobs)
-    train = pd.concat([train, aug], ignore_index=True)
     dataset = f"Kaggle Kepler Labelled Time Series (exoTrain + {len(aug)} injected-transit copies)"
-    return train, test, dataset, split
+    return train, aug, test, dataset, split
 
 
 # ------------------------------------------------------------------
@@ -208,7 +208,7 @@ def build_synthetic_dataset(n_samples: int = 300):
     print("No Kaggle exoTrain.csv in data/raw/. Generating a synthetic photometric dataset...")
     df = generate_synthetic_training_dataset(n_samples)
     train, test = train_test_split(df, test_size=0.25, random_state=SEED, stratify=df["label"])
-    return train, test, f"Synthetic light curves ({len(df)} generated)", "stratified 75/25 split"
+    return train, pd.DataFrame(), test, f"Synthetic light curves ({len(df)} generated)", "stratified 75/25 split"
 
 
 # ------------------------------------------------------------------
@@ -216,6 +216,46 @@ def build_synthetic_dataset(n_samples: int = 300):
 # ------------------------------------------------------------------
 def describe(name: str, df: pd.DataFrame) -> str:
     return f"{name}: {len(df)} light curves ({int(df['label'].sum())} transits, {int((df['label'] == 0).sum())} non-transits)"
+
+
+def make_model() -> RandomForestClassifier:
+    return RandomForestClassifier(
+        n_estimators=300,
+        max_depth=8,
+        min_samples_leaf=2,
+        class_weight="balanced",
+        random_state=SEED,
+        n_jobs=-1,
+    )
+
+
+def exoplanet_scores(y_true: np.ndarray, proba: np.ndarray) -> dict:
+    """Precision/recall/F1 at the 0.5 threshold plus threshold-free average precision (PR-AUC)."""
+    p, r, f1, _ = precision_recall_fscore_support(y_true, proba >= 0.5, labels=[1], zero_division=0)
+    return {
+        "precision": round(float(p[0]), 4),
+        "recall": round(float(r[0]), 4),
+        "f1": round(float(f1[0]), 4),
+        "average_precision": round(float(average_precision_score(y_true, proba)), 4),
+    }
+
+
+def cross_validate(natural: pd.DataFrame, aug: pd.DataFrame, k: int = 5) -> dict:
+    """
+    Stratified k-fold CV over the real training curves. Injected-transit copies are only
+    used in a fold's training part, and never when they were made from a held-out star.
+    With very few real positives this is a steadier estimate than one small test split.
+    """
+    ys, ps = [], []
+    for tr_idx, te_idx in StratifiedKFold(k, shuffle=True, random_state=0).split(natural, natural["label"]):
+        fold_train, fold_test = natural.iloc[tr_idx], natural.iloc[te_idx]
+        if not aug.empty:
+            fold_train = pd.concat([fold_train, aug[~aug["row_id"].isin(fold_test["row_id"])]])
+        model = make_model().fit(fold_train[FEATURE_COLUMNS], fold_train["label"])
+        ps.append(model.predict_proba(fold_test[FEATURE_COLUMNS])[:, 1])
+        ys.append(fold_test["label"].to_numpy())
+    scores = exoplanet_scores(np.concatenate(ys), np.concatenate(ps))
+    return {"folds": k, "n_positive": int(natural["label"].sum()), **scores}
 
 
 def main():
@@ -228,32 +268,33 @@ def main():
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     if KAGGLE_TRAIN.exists() and not args.synthetic:
-        train, test, dataset, split = build_kaggle_dataset(args.augment, args.n_jobs)
+        natural, aug, test, dataset, split = build_kaggle_dataset(args.augment, args.n_jobs)
     else:
-        train, test, dataset, split = build_synthetic_dataset()
+        natural, aug, test, dataset, split = build_synthetic_dataset()
+    train = pd.concat([natural, aug], ignore_index=True)
 
     print(describe("Train", train))
     print(describe("Test ", test))
 
-    model = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=8,
-        min_samples_leaf=2,
-        class_weight="balanced",
-        random_state=SEED,
-        n_jobs=-1,
-    )
-    model.fit(train[FEATURE_COLUMNS], train["label"])
+    model = make_model().fit(train[FEATURE_COLUMNS], train["label"])
 
     y_true = test["label"].to_numpy()
-    y_pred = model.predict(test[FEATURE_COLUMNS])
+    proba = model.predict_proba(test[FEATURE_COLUMNS])[:, 1]
+    y_pred = (proba >= 0.5).astype(int)
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-    p, r, f1, _ = precision_recall_fscore_support(y_true, y_pred, labels=[1], zero_division=0)
+    test_scores = exoplanet_scores(y_true, proba)
+
+    print("\nCross-validating on the training curves...")
+    cv = cross_validate(natural, aug)
 
     print(f"\n--- Test Set Evaluation ({split}) ---")
     print(classification_report(y_true, y_pred, labels=[0, 1], target_names=["No Exoplanet", "Exoplanet"], zero_division=0))
     print("Confusion Matrix [rows = true, cols = predicted; order: no_exoplanet, exoplanet]:")
     print(cm)
+    print(f"Exoplanet average precision (PR-AUC): {test_scores['average_precision']:.3f}")
+    print(f"\n--- {cv['folds']}-fold cross-validation on training curves ({cv['n_positive']} real transits) ---")
+    print(f"precision {cv['precision']:.2f}  recall {cv['recall']:.2f}  F1 {cv['f1']:.2f}  "
+          f"average precision {cv['average_precision']:.2f}")
     print("\nFeature importances:")
     for name, imp in sorted(zip(FEATURE_COLUMNS, model.feature_importances_), key=lambda x: -x[1]):
         print(f"  {name:10s} {imp:.3f}")
@@ -263,11 +304,13 @@ def main():
         "split": split,
         "n_train": int(len(train)), "n_train_positive": int(train["label"].sum()),
         "n_test": int(len(test)), "n_test_positive": int(test["label"].sum()),
-        "exoplanet_precision": round(float(p[0]), 4),
-        "exoplanet_recall": round(float(r[0]), 4),
-        "exoplanet_f1": round(float(f1[0]), 4),
+        "exoplanet_precision": test_scores["precision"],
+        "exoplanet_recall": test_scores["recall"],
+        "exoplanet_f1": test_scores["f1"],
+        "exoplanet_average_precision": test_scores["average_precision"],
         "accuracy": round(float((y_true == y_pred).mean()), 4),
         "confusion_matrix": cm.tolist(),
+        "cross_validation": cv,
         "feature_importances": {n: round(float(v), 4) for n, v in zip(FEATURE_COLUMNS, model.feature_importances_)},
     }
     trained_at = datetime.now(timezone.utc).isoformat(timespec="seconds")

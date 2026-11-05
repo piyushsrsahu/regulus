@@ -87,3 +87,15 @@ def test_estimate_planet_size(depth, r_earth, planet_class):
     assert size["radius_earth"] == pytest.approx(r_earth, abs=0.01)
     assert size["radius_jupiter"] == pytest.approx(r_earth / 11.21, abs=0.01)
     assert size["planet_class"] == planet_class
+
+
+def test_box_vs_sine_separates_transits_from_pulsation():
+    """Shape test: a box transit is fit better by a box, a pulsating star by a sine wave."""
+    rng = np.random.default_rng(1)
+    t = np.arange(0, 30, 0.02)
+    pulsating = 1.0 + 0.005 * np.sin(2 * np.pi * t / 1.7) + rng.normal(0, 1e-3, len(t))
+    transit = 1.0 + rng.normal(0, 1e-3, len(t))
+    transit[np.abs(((t - 1.0 + 2.0) % 4.0) - 2.0) < 0.1] -= 0.01
+
+    assert extract_features(load_light_curve(t, pulsating))["box_vs_sine"] < 0
+    assert extract_features(load_light_curve(t, transit))["box_vs_sine"] > 0.5

@@ -55,6 +55,31 @@ def robust_std(x: np.ndarray) -> float:
     return float(1.4826 * np.median(np.abs(x - np.median(x))))
 
 
+def box_vs_sine(time: np.ndarray, flux: np.ndarray, period: float, in_transit: np.ndarray) -> float:
+    """
+    Transit shape test: log10 of the variance explained by the BLS box model divided by the
+    variance explained by a sinusoid at the same period.
+
+    A flat-bottomed transit is fit far better by a box (positive values), while pulsating or
+    rotating stars are fit better by a sine wave (negative values). Scale-free.
+    """
+    y = np.asarray(flux, dtype=float)
+    ss0 = float(np.sum((y - y.mean()) ** 2))
+    if ss0 == 0 or period <= 0:
+        return 0.0
+    if in_transit.any() and (~in_transit).any():
+        sse_box = float(np.sum((y[in_transit] - y[in_transit].mean()) ** 2)
+                        + np.sum((y[~in_transit] - y[~in_transit].mean()) ** 2))
+    else:
+        sse_box = ss0
+    w = 2 * np.pi * np.asarray(time, dtype=float) / period
+    design = np.column_stack([np.sin(w), np.cos(w), np.ones_like(w)])
+    coef = np.linalg.lstsq(design, y, rcond=None)[0]
+    sse_sine = float(np.sum((y - design @ coef) ** 2))
+    eps = 1e-12 * ss0
+    return float(np.log10((ss0 - sse_box + eps) / (ss0 - sse_sine + eps)))
+
+
 def build_period_grid(t_span: float, min_period: float, max_period: float, n_min: int = 1000) -> np.ndarray:
     """Return trial periods (days), evenly spaced in frequency between min_period and max_period."""
     f_lo, f_hi = 1.0 / max_period, 1.0 / min_period
@@ -128,6 +153,7 @@ def extract_features(lc: lk.LightCurve, min_period: float = 0.5, max_period: flo
     bls_sde = (power.max() - np.median(power)) / power_scatter if power_scatter > 0 else 0.0
 
     features = {
+        "box_vs_sine": box_vs_sine(time, flux, period, in_transit),
         "period": period,
         "depth": max(0.0, depth),
         "duration": max(0.0, duration),
