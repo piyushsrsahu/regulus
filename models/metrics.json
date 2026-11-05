@@ -1,29 +1,39 @@
 {
-  "dataset": "Synthetic light curves (300 generated)",
-  "split": "stratified 75/25 split",
-  "n_train": 225,
-  "n_train_positive": 69,
-  "n_test": 75,
-  "n_test_positive": 23,
-  "exoplanet_precision": 1.0,
-  "exoplanet_recall": 1.0,
-  "exoplanet_f1": 1.0,
-  "accuracy": 1.0,
+  "dataset": "Kaggle Kepler Labelled Time Series (exoTrain + 400 injected-transit copies)",
+  "split": "official Kaggle split (train: exoTrain, test: exoTest)",
+  "n_train": 5487,
+  "n_train_positive": 437,
+  "n_test": 570,
+  "n_test_positive": 5,
+  "exoplanet_precision": 0.2143,
+  "exoplanet_recall": 0.6,
+  "exoplanet_f1": 0.3158,
+  "exoplanet_average_precision": 0.3886,
+  "accuracy": 0.9772,
   "confusion_matrix": [
     [
-      52,
-      0
+      554,
+      11
     ],
     [
-      0,
-      23
+      2,
+      3
     ]
   ],
-  "feature_importances": {
-    "period": 0.274,
-    "duration": 0.0267,
-    "depth_snr": 0.4647,
-    "bls_sde": 0.2345
+  "cross_validation": {
+    "folds": 5,
+    "n_positive": 37,
+    "precision": 0.1017,
+    "recall": 0.3243,
+    "f1": 0.1548,
+    "average_precision": 0.2304
   },
-  "trained_at": "2026-11-05T17:16:34+00:00"
+  "feature_importances": {
+    "period": 0.2642,
+    "duration": 0.0627,
+    "depth_snr": 0.1985,
+    "bls_sde": 0.3193,
+    "box_vs_sine": 0.1553
+  },
+  "trained_at": "2026-11-05T18:08:47+00:00"
 }

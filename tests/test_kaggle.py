@@ -48,7 +48,7 @@ def test_scale_free_features_ignore_flux_units():
     t, raw = _kaggle_like_row(seed=3)
     a = extract_features(load_light_curve(t, kaggle_row_to_relative_flux(raw)))
     b = extract_features(load_light_curve(t, kaggle_row_to_relative_flux(raw * 50)))
-    for key in ("period", "duration", "depth_snr", "bls_sde"):
+    for key in ("period", "duration", "depth_snr", "bls_sde", "box_vs_sine"):
         assert a[key] == pytest.approx(b[key], rel=0.02)
 
 
